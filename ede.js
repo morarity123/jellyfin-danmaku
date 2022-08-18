@@ -10,12 +10,12 @@
 // @updateURL    https://cdn.jsdelivr.net/gh/RyoLee/emby-danmaku@gh-pages/ede.user.js
 // @downloadURL  https://cdn.jsdelivr.net/gh/RyoLee/emby-danmaku@gh-pages/ede.user.js
 // @grant        none
-// @match        */web/index.html
+// @match        *://*/*/web/index.html
 // ==/UserScript==
 
 (async function () {
     'use strict';
-    if (document.querySelector('meta[name="application-name"]').content == 'Emby') {
+    if (document.querySelector('meta[name="application-name"]').content == 'Jellyfin') {
         // ------ configs start------
         const check_interval = 200;
         const chConverTtitle = ['当前状态: 未启用', '当前状态: 转换为简体', '当前状态: 转换为繁体'];
@@ -29,7 +29,8 @@
             class: 'paper-icon-button-light',
             is: 'paper-icon-button-light',
         };
-        const uiAnchorStr = '\uE034';
+        // const uiAnchorStr = '\uE034';
+        const uiQueryStr = '.osdTimeText';
         const mediaContainerQueryStr = "div[data-type='video-osd']";
         const mediaQueryStr = 'video';
         const displayButtonOpts = {
@@ -136,7 +137,10 @@
         }
 
         function createButton(opt) {
-            let button = document.createElement('button', buttonOptions);
+            //let button = document.createElement('button', buttonOptions);
+            let button = document.createElement('button');
+            button.class = buttonOptions.class;
+            button.is = buttonOptions.is;
             button.setAttribute('title', opt.title);
             button.setAttribute('id', opt.id);
             let icon = document.createElement('span');
@@ -194,8 +198,9 @@
 
         function initUI() {
             // 页面未加载
-            let uiAnchor = getElementsByInnerText('i', uiAnchorStr);
-            if (!uiAnchor || !uiAnchor[0]) {
+            // let uiAnchor = getElementsByInnerText('i', uiAnchorStr);
+            // if (!uiAnchor || !uiAnchor[0]) {
+            if (!document.querySelector(uiQueryStr)) {
                 return;
             }
             // 已初始化
@@ -204,13 +209,24 @@
             }
             console.log('正在初始化UI');
             // 弹幕按钮容器div
-            let parent = uiAnchor[0].parentNode.parentNode.parentNode;
+            var uiEle = null;
+            document.querySelectorAll(uiQueryStr).forEach(function (element) {
+                if (element.offsetParent != null) {
+                    uiEle = element;
+                }
+            });
+            if (uiEle == null) {
+                return;
+            }
+            //let parent = uiAnchor[0].parentNode.parentNode.parentNode;
+            let parent = uiEle.parentNode;
             let menubar = document.createElement('div');
             menubar.id = 'danmakuCtr';
             if (!window.ede.episode_info) {
                 menubar.style.opacity = 0.5;
             }
-            parent.append(menubar);
+            //parent.append(menubar);
+            parent.insertBefore(menubar, uiEle);
             // 弹幕开关
             displayButtonOpts.innerText = danmaku_icons[window.ede.danmakuSwitch];
             menubar.appendChild(createButton(displayButtonOpts));
@@ -245,23 +261,58 @@
             }
         }
 
-        function getEmbyItemInfo() {
-            return window.require(['pluginManager']).then((items) => {
-                if (items) {
-                    for (let i = 0; i < items.length; i++) {
-                        const item = items[i];
-                        if (item.pluginsList) {
-                            for (let j = 0; j < item.pluginsList.length; j++) {
-                                const plugin = item.pluginsList[j];
-                                if (plugin && plugin.id == 'htmlvideoplayer') {
-                                    return plugin._currentPlayOptions ? plugin._currentPlayOptions.item : null;
-                                }
-                            }
+
+        async function getEmbyItemInfo() {
+            /*return window.require(['pluginManager']).then((items) => {
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    for (let j = 0; j < item.pluginsList.length; j++) {
+                        const plugin = item.pluginsList[j];
+                        if (plugin.id == 'htmlvideoplayer') {
+                            return plugin._currentPlayOptions.item;
                         }
                     }
                 }
+            });*/
+            while (!document.querySelector(".htmlvideoplayer")) {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            try {
+                console.log('获取番剧信息');
+                let title = document.title;
+                let pagetitle = document.querySelector("h3[class='pageTitle']").innerText;
+                if (title == pagetitle) {
+                    let src = document.querySelector('.htmlvideoplayer').src;
+                    let _id = /.*Videos\/(\w*)\/stream/gi.exec(src) || /.*\/([\w-]*)/gi.exec(src);
+                    return { Id: _id[1], Name: title };
+                }
+                var season = /S([0-9]*)/gi.exec(pagetitle);
+                var episode = /E([0-9]*)/gi.exec(pagetitle);
+                if (season != null && episode != null) {
+                    var s = season[1];
+                    var e = episode[1];
+                    let sid = null;
+                    let _id = null;
+                    try {
+                        document.querySelectorAll('.btnPlaystate').forEach(function (item) {
+                            if (item.getAttribute('data-type') == 'Season') sid = item.getAttribute('data-id');
+                        });
+                    } catch (e) {
+                        console.log('获取seasonid 失败 ' + e);
+                    }
+                    if (sid == null) {
+                        let src = document.querySelector('.htmlvideoplayer').poster;
+                        let i = /.*Items\/(\w*)\/Images/gi.exec(src);
+                        _id = i[1];
+                    } else {
+                        _id = sid;
+                    }
+                    return { SeasonId: _id, Type: 'Episode', SeriesName: title, ParentIndexNumber: s, IndexNumber: e };
+                }
+            } catch (err) {
+                console.log('还没加载好' + err);
                 return null;
-            });
+            }
         }
 
         async function getEpisodeInfo(is_auto = true) {
@@ -321,6 +372,11 @@
                     console.log('查询失败:', error);
                     return null;
                 });
+            if (animaInfo.animes.length == 0) {
+                console.log('弹幕查询无结果');
+                alert('弹幕查询无结果');
+                return null;
+            }
             console.log('查询成功');
             console.log(animaInfo);
             let selecAnime_id = 1;
@@ -545,7 +601,7 @@
             return ep_lists_str;
         }
 
-        while (!window.require) {
+        while (!document.querySelector('.htmlvideoplayer')) {
             await new Promise((resolve) => setTimeout(resolve, 200));
         }
         if (!window.ede) {
