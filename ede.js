@@ -12,6 +12,8 @@
 // @resource     MDICON_CSS https://fonts.googleapis.com/icon?family=Material+Icons
 // @grant        GM_getResourceText
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
+// @connect      *
 // @match        *://*/*/web/index.html
 // ==/UserScript==
 
@@ -320,6 +322,25 @@
             }
         }
 
+        function makeGetRequest(url) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: url,
+                    headers: {
+                        "Accept-Encoding": "gzip",
+                        "Accept": "application/json"
+                    },
+                    onload: function(response) {
+                        resolve(response.responseText);
+                    },
+                    onerror: function(error) {
+                        reject(error);
+                    }
+                });
+            });
+        }
+
         async function getEpisodeInfo(is_auto = true) {
             let item = await getEmbyItemInfo();
             if (!item) {
@@ -364,15 +385,8 @@
             if (is_auto) {
                 searchUrl += '&episode=' + episode;
             }
-            let animaInfo = await fetch(searchUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept-Encoding': 'gzip',
-                    Accept: 'application/json',
-                    'User-Agent': navigator.userAgent,
-                },
-            })
-                .then((response) => response.json())
+            let animaInfo = await makeGetRequest(searchUrl)
+                .then((response) => JSON.parse(response))
                 .catch((error) => {
                     console.log('查询失败:', error);
                     return null;
@@ -416,16 +430,9 @@
         }
 
         function getComments(episodeId) {
-            let url = 'https://api.xn--7ovq92diups1e.com/cors/https://api.dandanplay.net/api/v2/comment/' + episodeId + '?withRelated=true&chConvert=' + window.ede.chConvert;
-            return fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept-Encoding': 'gzip',
-                    Accept: 'application/json',
-                    'User-Agent': navigator.userAgent,
-                },
-            })
-                .then((response) => response.json())
+            let url = 'https://api.dandanplay.net/api/v2/comment/' + episodeId + '?withRelated=true&chConvert=' + window.ede.chConvert;
+            return makeGetRequest(url)
+                .then((response) => JSON.parse(response))
                 .then((data) => {
                     console.log('弹幕下载成功: ' + data.comments.length);
                     return data.comments;
