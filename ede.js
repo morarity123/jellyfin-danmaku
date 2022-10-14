@@ -459,7 +459,12 @@
                 await new Promise((resolve) => setTimeout(resolve, 200));
             }
 
-            let _container = document.querySelector(mediaContainerQueryStr);
+            var _container = null;
+            document.querySelectorAll(mediaContainerQueryStr).forEach(function (element) {
+                if (!element.classList.contains('hide')) {
+                    _container = element;
+                }
+            });
             let _media = document.querySelector(mediaQueryStr);
             window.ede.danmaku = new Danmaku({
                 container: _container,
